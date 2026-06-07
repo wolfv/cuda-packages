@@ -81,7 +81,10 @@ requirements:
         # CEP-0046 hardware gate: only installable when the system's minimum
         # detected compute capability meets this variant's target generation.
         - __cuda_arch >=${{ min_cuda_arch }}
-    - "pytorch 2.10.* *cuda*"
+    # Version pin comes from pytorch's run-export; we only need to constrain the
+    # build to a CUDA variant (the run-export carries no build string, and the
+    # compiled extension links torch's CUDA libs).
+    - "pytorch * *cuda*"
 
 tests:
   - python:
