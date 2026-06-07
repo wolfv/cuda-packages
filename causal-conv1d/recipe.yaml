@@ -28,7 +28,9 @@ build:
   skip:
     - cuda_compiler_version == "None"
     - win
+    # Blackwell (sm_100 / sm_120) requires CUDA >= 12.8, so skip on 12.6.
     - cuda_arch == "sm100" and cuda_compiler_version == "12.6"
+    - cuda_arch == "sm120" and cuda_compiler_version == "12.6"
   variant:
     # Make cuda_arch part of the variant identity even though it only appears via
     # the zipped helper keys, and prefer the highest arch the hardware supports.

@@ -26,9 +26,10 @@ on:
         description: GPU generation, min-sm of the group (ignored for flash-linear-attention)
         type: choice
         options:
-          - sm80    # Ampere    (sm_80, sm_86, sm_89)
-          - sm90    # Hopper    (sm_90)
-          - sm100   # Blackwell (sm_100, sm_120) — needs CUDA >= 12.8
+          - sm80    # Ampere               (sm_80, sm_86, sm_89)
+          - sm90    # Hopper               (sm_90)
+          - sm100   # Blackwell datacenter (sm_100, sm_103) — needs CUDA >= 12.8
+          - sm120   # Blackwell consumer   (sm_120, sm_121) — needs CUDA >= 12.8
         default: sm90
       python_version:
         description: Python version (ignored for flash-linear-attention)
@@ -74,17 +75,18 @@ jobs:
           if [ "$PKG" = "flash-linear-attention" ] || [ "$PKG" = "fla-core" ]; then
             echo "noarch package — cuda/arch/python inputs are ignored."
           else
-            if [ "$ARCH" = "sm100" ] && [ "$CUDA" = "12.6" ]; then
-              echo "::error::sm100 (Blackwell) requires CUDA >= 12.8 — pick 12.9 or 13.0. This cell is skipped in the recipe and builds nothing."
+            if { [ "$ARCH" = "sm100" ] || [ "$ARCH" = "sm120" ]; } && [ "$CUDA" = "12.6" ]; then
+              echo "::error::$ARCH (Blackwell) requires CUDA >= 12.8 — pick 12.9 or 13.0. This cell is skipped in the recipe and builds nothing."
               exit 1
             fi
             # cuda_arch is zipped with these three keys (source of truth:
             # $PKG/variants.yaml), so the whole tuple must be overridden together —
             # overriding cuda_arch alone breaks the equal-length zip requirement.
             case "$ARCH" in
-              sm80)  TORCH="8.0;8.6;8.9+PTX"; MINCC="8.0";  PRIO="2" ;;
-              sm90)  TORCH="9.0+PTX";         MINCC="9.0";  PRIO="1" ;;
-              sm100) TORCH="10.0;12.0+PTX";   MINCC="10.0"; PRIO="0" ;;
+              sm80)  TORCH="8.0;8.6;8.9+PTX"; MINCC="8.0";  PRIO="3" ;;
+              sm90)  TORCH="9.0+PTX";         MINCC="9.0";  PRIO="2" ;;
+              sm100) TORCH="10.0+PTX";        MINCC="10.0"; PRIO="1" ;;
+              sm120) TORCH="12.0+PTX";        MINCC="12.0"; PRIO="0" ;;
               *) echo "::error::unknown cuda_arch '$ARCH'"; exit 1 ;;
             esac
             # GitHub-hosted runners have no NVIDIA driver, so the __cuda virtual

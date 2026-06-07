@@ -33,25 +33,31 @@ Both compiled packages multiply two axes (see each `variants.yaml`):
 | Axis | Values | Mechanism |
 |------|--------|-----------|
 | **CUDA version** | 12.6, 12.9, 13.0 | `cuda_compiler_version`; `cuda-version ==X` in host pins the runtime so only the matching build resolves |
-| **GPU generation** | sm80 / sm90 / sm100 | `cuda_arch` (+ zipped `torch_cuda_arch_list`, `min_cuda_arch`, `arch_priority`) |
+| **GPU generation** | sm80 / sm90 / sm100 / sm120 | `cuda_arch` (+ zipped `torch_cuda_arch_list`, `min_cuda_arch`, `arch_priority`) |
 
 Per generation (the `cuda_arch` label is the group's minimum sm, matching the run-gate):
 
 | `cuda_arch` | Generation | `TORCH_CUDA_ARCH_LIST` | run-gate | priority |
 |-------------|------------|------------------------|----------|----------|
-| `sm80`  | Ampere (sm_80/86/89)    | `8.0;8.6;8.9+PTX`  | `__cuda_arch >=8.0`  | fallback (penalty 2) |
-| `sm90`  | Hopper (sm_90)          | `9.0+PTX`          | `__cuda_arch >=9.0`  | penalty 1 |
-| `sm100` | Blackwell (sm_100/120)  | `10.0;12.0+PTX`    | `__cuda_arch >=10.0` | preferred (penalty 0) |
+| `sm80`  | Ampere (sm_80/86/89)         | `8.0;8.6;8.9+PTX`  | `__cuda_arch >=8.0`  | fallback (penalty 3) |
+| `sm90`  | Hopper (sm_90)               | `9.0+PTX`          | `__cuda_arch >=9.0`  | penalty 2 |
+| `sm100` | Blackwell datacenter (sm_100/103) | `10.0+PTX`    | `__cuda_arch >=10.0` | penalty 1 |
+| `sm120` | Blackwell consumer (sm_120/121)   | `12.0+PTX`    | `__cuda_arch >=12.0` | preferred (penalty 0) |
+
+`sm100` (10.x) and `sm120` (12.x) are **separate, non-cross-compatible SASS families**, so
+they're built as distinct variants rather than one fat `10.0;12.0` binary — smaller packages
+and far less compile memory (one family per `nvcc` invocation). PTX gives forward-compat
+within/above each family.
 
 **How selection works.** The `__cuda_arch >= min` run requirement makes a variant
 *installable* only on hardware whose minimum device meets that compute capability. When
 more than one variant qualifies (e.g. an sm_100 box can run all three via SASS+PTX),
 `down_prioritize_variant` (= `arch_priority`) makes the solver prefer the least-penalized
-= highest-arch build. So sm_80 → `sm80`, sm_90 → `sm90`, sm_100/120 → `sm100`,
-automatically. Each group carries `+PTX` on its top capability for forward compatibility,
-per the CEP's usage notes.
+= highest-arch build. So sm_80 → `sm80`, sm_90 → `sm90`, sm_100/103 → `sm100`,
+sm_120/121 → `sm120`, automatically. Each group carries `+PTX` on its top capability for
+forward compatibility, per the CEP's usage notes.
 
-`sm100 × CUDA 12.6` is skipped because sm_100/sm_120 require CUDA ≥ 12.8.
+`sm100` and `sm120` × CUDA 12.6 are skipped because both Blackwell families require CUDA ≥ 12.8.
 
 ## Building
 
@@ -101,9 +107,9 @@ rattler-build build --recipe flash-linear-attention
 ## Build everything and publish to prefix.dev
 
 `.github/workflows/build-and-upload-all.yml` (manual `workflow_dispatch`) fans the full
-matrix out into one job per `(package × cuda × arch × python)` cell — 66 jobs total
-(32 causal-conv1d + 32 flash-attn + noarch fla-core + noarch flash-linear-attention, with
-`sm100×12.6` excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
+matrix out into one job per `(package × cuda × arch × python)` cell — 82 jobs total
+(40 causal-conv1d + 40 flash-attn + noarch fla-core + noarch flash-linear-attention, with
+`sm100`/`sm120 × 12.6` excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
 **`cuda-optimized-packages`** channel on prefix.dev, signed with a **sigstore attestation**
 (`--generate-attestation`, one upload per package). Auth uses **trusted publishing** (GitHub
 OIDC) — no API key/secret. Inputs let you limit to one package or force-overwrite.
@@ -136,7 +142,7 @@ already lives on conda-forge).
 
 `.github/workflows/build-variant.yml` exposes a manual **`workflow_dispatch`** trigger
 ("Run workflow" button, or `gh workflow run build-variant.yml`). Pick the `package`,
-`cuda_compiler_version`, `cuda_arch` (sm80/sm90/sm100) and `python_version`; it maps the
+`cuda_compiler_version`, `cuda_arch` (sm80/sm90/sm100/sm120) and `python_version`; it maps the
 arch to its zipped tuple, builds that one cell, and uploads the `.conda` as an artifact.
 Tests default to off (GitHub-hosted runners have no GPU). Note flash-attn's CUDA compile
 is heavy and may strain free runners.
