@@ -1,0 +1,25 @@
+From: optimized-package
+Subject: [PATCH] Build against the conda ninja and limit nvcc to one thread
+
+ninja is provided by the conda host environment, so it must not be pulled in
+again from PyPI via install_requires. Also cap nvcc at a single compile thread
+so build runners don't run out of memory during the CUDA compile.
+
+--- a/setup.py
++++ b/setup.py
+@@ -127,7 +127,7 @@
+
+
+ def append_nvcc_threads(nvcc_extra_args):
+-    return nvcc_extra_args + ["--threads", "4"]
++    return nvcc_extra_args + ["--threads", "1"]
+
+
+ cmdclass = {}
+@@ -383,6 +383,5 @@
+     install_requires=[
+         "torch",
+         "packaging",
+-        "ninja",
+     ],
+ )

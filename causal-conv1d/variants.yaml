@@ -1,0 +1,32 @@
+# Two variant axes for causal-conv1d:
+#   1. cuda_compiler_version  -> CUDA-version-specific variants (12.6 / 12.9 / 13.0)
+#   2. cuda_arch (+ zipped siblings) -> CUDA-arch-specific variants per GPU generation
+#
+# cuda_compiler_version is taken in a full cartesian product with the arch group.
+# The four arch keys are zipped so they always move together (one row per generation),
+# rather than producing a meaningless cartesian product among themselves.
+
+cuda_compiler_version:
+  - "12.6"
+  - "12.9"
+  - "13.0"
+
+zip_keys:
+  - [cuda_arch, torch_cuda_arch_list, min_cuda_arch, arch_priority]
+
+cuda_arch:            # min-sm label for the generation, used in the build string
+  - sm80              # Ampere    (sm_80, sm_86, sm_89)
+  - sm90              # Hopper    (sm_90)
+  - sm100             # Blackwell (sm_100, sm_120)
+torch_cuda_arch_list: # value of TORCH_CUDA_ARCH_LIST; PTX on the top of each group
+  - "8.0;8.6;8.9+PTX"
+  - "9.0+PTX"
+  - "10.0;12.0+PTX"
+min_cuda_arch:        # the `__cuda_arch >=X.Y` run-gate (CEP-0046, {major}.{minor})
+  - "8.0"
+  - "9.0"
+  - "10.0"
+arch_priority:        # down_prioritize_variant penalty: higher == less preferred
+  - "2"               # sm80  (broadest fallback)
+  - "1"               # sm90
+  - "0"               # sm100 (preferred whenever the hardware supports it)

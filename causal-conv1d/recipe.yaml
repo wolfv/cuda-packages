@@ -1,0 +1,112 @@
+schema_version: 1
+
+context:
+  name: causal-conv1d
+  version: "1.6.2.post1"
+  build_number: 4
+
+package:
+  name: ${{ name|lower }}
+  version: ${{ version }}
+
+source:
+  - url: https://github.com/Dao-AILab/${{ name }}/archive/refs/tags/v${{ version }}.tar.gz
+    sha256: 4589196e0afd58a015f32dd7333183e1bb582c928d0a333496b6ec86f462012d
+    patches:
+      # Drop the pip "ninja" dep (conda provides it) and cap nvcc threads at 1.
+      - patches/0001-no-pip-ninja-and-single-nvcc-thread.patch
+
+build:
+  number: ${{ build_number }}
+  # build string carries cuda version + arch generation + python so every
+  # (cuda_compiler_version x cuda_arch x python) variant coexists in one channel.
+  string: ${{ "cuda" ~ (cuda_compiler_version | replace(".", "")) ~ "_" ~ cuda_arch ~ "_py" ~ (python | version_to_buildstring) ~ "_h" ~ hash ~ "_" ~ build_number }}
+  # Upstream only provides a CUDA extension, so no-CUDA and Windows stay disabled.
+  # Blackwell (sm_100 / sm_120) requires CUDA >= 12.8, so it cannot be compiled by 12.6.
+  skip:
+    - cuda_compiler_version == "None"
+    - win
+    - cuda_arch == "sm100" and cuda_compiler_version == "12.6"
+  variant:
+    # Make cuda_arch part of the variant identity even though it only appears via
+    # the zipped helper keys, and prefer the highest arch the hardware supports.
+    use_keys:
+      - cuda_compiler_version
+      - cuda_arch
+    down_prioritize_variant: ${{ arch_priority | int }}
+  script:
+    env:
+      CAUSAL_CONV1D_FORCE_BUILD: "TRUE"
+      CAUSAL_CONV1D_FORCE_CXX11_ABI: "TRUE"
+      # Compile SASS+PTX only for this variant's GPU generation instead of a fat binary.
+      TORCH_CUDA_ARCH_LIST: ${{ torch_cuda_arch_list }}
+    content:
+      # CUDA_HOME needs the build-time $BUILD_PREFIX, which is a shell variable
+      # rather than a jinja value, so it is exported here instead of in `env`.
+      - if: unix
+        then: export CUDA_HOME="${BUILD_PREFIX}"
+      - if: win
+        then: set "CUDA_HOME=%BUILD_PREFIX%"
+      - python -m build --wheel --no-isolation --skip-dependency-check .
+      - python -m pip install dist/causal_conv1d-*.whl --no-deps -vv
+  prefix_detection:
+    ignore:
+      - x86_64-conda-linux-gnu/lib/libgfortran.so*
+      - lib/gcc/x86_64-conda-linux-gnu/*/libhwasan.so
+
+requirements:
+  build:
+    - ${{ compiler("cxx") }}
+    - if: cuda_compiler_version != "None"
+      then: ${{ compiler("cuda") }}
+    - ${{ stdlib("c") }}
+    - if: build_platform != target_platform
+      then:
+        - cross-python_${{ target_platform }}
+        - cython
+        - python
+        - "pytorch 2.10.* *cuda*"
+  host:
+    - if: cuda_compiler_version != "None"
+      then:
+        - cuda-cudart-dev
+        - cuda-version ==${{ cuda_compiler_version }}
+    - ninja
+    - packaging
+    - pip
+    - python
+    - python-build
+    - "pytorch 2.10.* *cuda*"
+    - setuptools >=18.0
+    - wheel
+  run:
+    - ${{ pin_compatible("python") }}
+    - if: cuda_compiler_version != "None"
+      then:
+        - cuda-cudart
+        # CEP-0046 hardware gate: only installable when the system's minimum
+        # detected compute capability meets this variant's target generation.
+        - __cuda_arch >=${{ min_cuda_arch }}
+    - packaging
+    - python
+    - python_abi * *_cp${{ python | version_to_buildstring }}
+    - "pytorch 2.10.* *cuda*"
+  ignore_run_exports:
+    from_package:
+      - packaging
+
+tests:
+  - python:
+      imports:
+        - causal_conv1d
+      pip_check: true
+
+about:
+  homepage: https://github.com/Dao-AILab/causal-conv1d
+  summary: Causal depthwise conv1d in CUDA, with a PyTorch interface
+  license: BSD-3-Clause
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - jeongseok-meta

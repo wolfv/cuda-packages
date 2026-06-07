@@ -1,0 +1,52 @@
+schema_version: 1
+
+context:
+  name: flash-linear-attention
+  version: "0.5.0"
+  # Upstream requires-python is >=3.10 (matches conda-forge's current default).
+  python_min: "3.10"
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  url: https://pypi.org/packages/source/f/${{ name }}/flash_linear_attention-${{ version }}.tar.gz
+  sha256: 22b789a47f07738b4382ecdf775d7bb40e0d803c467c34f8e2ecd6a1dc780938
+
+build:
+  number: 0
+  # Pure-Python: the CUDA kernels are written in Triton and JIT-compiled at
+  # runtime for whatever GPU is present, so there is nothing to compile per
+  # arch / per CUDA-version here. One noarch package serves every platform.
+  noarch: python
+  script: python -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python ${{ python_min }}.*
+    - pip
+    - setuptools >=45
+    - wheel
+  run:
+    - python >=${{ python_min }}
+    # As of 0.5.0 the implementation lives in `fla-core`; this is a thin meta package.
+    - fla-core ==${{ version }}
+    - transformers
+
+tests:
+  - python:
+      imports:
+        - fla
+      pip_check: true
+      python_version: ${{ python_min }}.*
+
+about:
+  homepage: https://github.com/fla-org/flash-linear-attention
+  summary: Fast Triton-based implementations of causal linear attention models and layers
+  license: MIT
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - hi-prefix-dev

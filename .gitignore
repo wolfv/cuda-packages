@@ -1,0 +1,11 @@
+# rattler-build artifacts
+output/
+*.conda
+*.tar.bz2
+# editor / patch backups
+*.bak
+*.orig
+.DS_Store
+
+# local Claude settings
+.claude/
