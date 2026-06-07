@@ -97,6 +97,34 @@ rattler-build build --recipe flash-linear-attention
 > compiled kernels still can't actually execute without a real GPU. The Action sets both
 > for you.
 
+## Build everything and publish to prefix.dev
+
+`.github/workflows/build-and-upload-all.yml` (manual `workflow_dispatch`) fans the full
+matrix out into one job per `(package × cuda × arch × python)` cell — 65 jobs total
+(32 causal-conv1d + 32 flash-attn + 1 noarch flash-linear-attention, with `sm100×12.6`
+excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
+**`cuda-optimized`** channel on prefix.dev with `--skip-existing`. Inputs let you limit to
+one package or force-overwrite.
+
+One-time setup before the first run:
+
+```bash
+# 1. create the channel at https://prefix.dev/channels  (name: cuda-optimized)
+# 2. store an API key with write access as a repo secret:
+gh secret set PREFIX_API_KEY --repo wolfv/cuda-packages   # paste the token when prompted
+```
+
+Then trigger it:
+
+```bash
+gh workflow run build-and-upload-all.yml --repo wolfv/cuda-packages           # all packages
+gh workflow run build-and-upload-all.yml --repo wolfv/cuda-packages -f only_package=causal-conv1d
+```
+
+> The flash-attn cells are a heavy CUDA compile on CPU-only GitHub-hosted runners and may be
+> slow or hit the 6h job limit — consider larger/self-hosted runners for the full matrix.
+> flash-linear-attention uploads fine but won't resolve until `fla-core` is also on the channel.
+
 ## Build a single variant from GitHub Actions
 
 `.github/workflows/build-variant.yml` exposes a manual **`workflow_dispatch`** trigger

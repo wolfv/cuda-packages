@@ -1,0 +1,138 @@
+name: Build all variants and upload to prefix.dev
+
+# Builds every (package x cuda x arch x python) variant and uploads each result
+# to the `cuda-optimized` channel on prefix.dev.
+#
+# Prerequisites (one-time):
+#   1. Create the channel:  https://prefix.dev/channels  -> "cuda-optimized"
+#   2. Add an API key as a repo secret:
+#        gh secret set PREFIX_API_KEY --repo wolfv/cuda-packages
+on:
+  workflow_dispatch:
+    inputs:
+      only_package:
+        description: Limit to one package (or all)
+        type: choice
+        options:
+          - all
+          - causal-conv1d
+          - flash-attn
+          - flash-linear-attention
+        default: all
+      overwrite:
+        description: Overwrite packages already in the channel (else skip existing)
+        type: boolean
+        default: false
+
+concurrency:
+  group: build-upload-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # ---- expand the full variant matrix as JSON ----
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      include: ${{ steps.gen.outputs.include }}
+    steps:
+      - id: gen
+        env:
+          ONLY: ${{ inputs.only_package }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os
+          only = os.environ.get("ONLY", "all")
+          # arch tuple = (label, TORCH_CUDA_ARCH_LIST, min compute capability, priority)
+          ARCHES = [
+              ("sm80",  "8.0;8.6;8.9+PTX", "8.0",  "2"),
+              ("sm90",  "9.0+PTX",         "9.0",  "1"),
+              ("sm100", "10.0;12.0+PTX",   "10.0", "0"),
+          ]
+          CUDAS = ["12.6", "12.9", "13.0"]
+          PYS = ["3.10", "3.11", "3.12", "3.13"]
+          rows = []
+          for pkg in ("causal-conv1d", "flash-attn"):
+              if only not in ("all", pkg):
+                  continue
+              for cuda in CUDAS:
+                  for arch, torch, mincc, prio in ARCHES:
+                      # Blackwell (sm_100/sm_120) needs CUDA >= 12.8
+                      if arch == "sm100" and cuda == "12.6":
+                          continue
+                      for py in PYS:
+                          rows.append(dict(package=pkg, noarch="false", cuda=cuda,
+                                           arch=arch, torch=torch, mincc=mincc,
+                                           prio=prio, py=py))
+          if only in ("all", "flash-linear-attention"):
+              rows.append(dict(package="flash-linear-attention", noarch="true",
+                               cuda="", arch="", torch="", mincc="", prio="", py=""))
+          print("include=" + json.dumps(rows))
+          PY
+
+  build-upload:
+    needs: matrix
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 10
+      matrix:
+        include: ${{ fromJson(needs.matrix.outputs.include) }}
+    name: ${{ matrix.package }} ${{ matrix.cuda }} ${{ matrix.arch }} py${{ matrix.py }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: prefix-dev/setup-pixi@v0.9.6
+        with:
+          run-install: false
+
+      - name: Build variant
+        env:
+          PKG: ${{ matrix.package }}
+          NOARCH: ${{ matrix.noarch }}
+          CUDA: ${{ matrix.cuda }}
+          ARCH: ${{ matrix.arch }}
+          TORCH: ${{ matrix.torch }}
+          MINCC: ${{ matrix.mincc }}
+          PRIO: ${{ matrix.prio }}
+          PY: ${{ matrix.py }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$NOARCH" = "true" ]; then
+            pixi exec rattler-build build --recipe "$PKG" --output-dir output --test skip
+          else
+            # No GPU driver on the runner -> inject __cuda so pytorch *cuda* resolves.
+            export CONDA_OVERRIDE_CUDA="$CUDA"
+            pixi exec rattler-build build --recipe "$PKG" \
+              -m pinning/conda_build_config.yaml -m "$PKG/variants.yaml" \
+              --target-platform linux-64 --test skip --output-dir output \
+              --variant "cuda_compiler_version=$CUDA" \
+              --variant "cuda_arch=$ARCH" \
+              --variant "torch_cuda_arch_list=$TORCH" \
+              --variant "min_cuda_arch=$MINCC" \
+              --variant "arch_priority=$PRIO" \
+              --variant "python=$PY"
+          fi
+
+      - name: Upload to prefix.dev (cuda-optimized)
+        env:
+          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
+          OVERWRITE: ${{ inputs.overwrite }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${PREFIX_API_KEY:-}" ]; then
+            echo "::error::PREFIX_API_KEY secret is not set. Add it with:"
+            echo "::error::  gh secret set PREFIX_API_KEY --repo ${{ github.repository }}"
+            exit 1
+          fi
+          mapfile -t pkgs < <(find output -type f \( -name '*.conda' -o -name '*.tar.bz2' \))
+          if [ "${#pkgs[@]}" -eq 0 ]; then
+            echo "::error::no package artifacts were produced"
+            exit 1
+          fi
+          if [ "$OVERWRITE" = "true" ]; then DUP=--force; else DUP=--skip-existing; fi
+          printf 'uploading:\n'; printf '  %s\n' "${pkgs[@]}"
+          pixi exec rattler-build upload prefix --channel cuda-optimized "$DUP" "${pkgs[@]}"
