@@ -1,12 +1,14 @@
 name: Build all variants and upload to prefix.dev
 
 # Builds every (package x cuda x arch x python) variant and uploads each result
-# to the `cuda-optimized` channel on prefix.dev.
+# to the `cuda-optimized-packages` channel on prefix.dev, signed with a sigstore
+# attestation. Auth is via trusted publishing (GitHub OIDC) — no API key needed.
 #
 # Prerequisites (one-time):
-#   1. Create the channel:  https://prefix.dev/channels  -> "cuda-optimized"
-#   2. Add an API key as a repo secret:
-#        gh secret set PREFIX_API_KEY --repo wolfv/cuda-packages
+#   1. Create the channel `cuda-optimized-packages` at https://prefix.dev/channels
+#   2. Add a Trusted Publisher for this repo + workflow:
+#        prefix.dev -> channel settings -> Trusted Publishers ->
+#        repo: wolfv/cuda-packages, workflow: build-and-upload-all.yml
 on:
   workflow_dispatch:
     inputs:
@@ -78,6 +80,10 @@ jobs:
   build-upload:
     needs: matrix
     runs-on: ubuntu-latest
+    # Trusted publishing (OIDC) + sigstore attestation both need id-token: write.
+    permissions:
+      id-token: write
+      contents: read
     strategy:
       fail-fast: false
       max-parallel: 10
@@ -120,23 +126,25 @@ jobs:
               --variant "python=$PY"
           fi
 
-      - name: Upload to prefix.dev (cuda-optimized)
+      - name: Upload to prefix.dev (cuda-optimized-packages)
         env:
-          PREFIX_API_KEY: ${{ secrets.PREFIX_API_KEY }}
           OVERWRITE: ${{ inputs.overwrite }}
         shell: bash
         run: |
           set -euo pipefail
-          if [ -z "${PREFIX_API_KEY:-}" ]; then
-            echo "::error::PREFIX_API_KEY secret is not set. Add it with:"
-            echo "::error::  gh secret set PREFIX_API_KEY --repo ${{ github.repository }}"
-            exit 1
-          fi
+          # No PREFIX_API_KEY: auth is via trusted publishing (GitHub OIDC).
           mapfile -t pkgs < <(find output -type f \( -name '*.conda' -o -name '*.tar.bz2' \))
           if [ "${#pkgs[@]}" -eq 0 ]; then
             echo "::error::no package artifacts were produced"
             exit 1
           fi
           if [ "$OVERWRITE" = "true" ]; then DUP=--force; else DUP=--skip-existing; fi
-          printf 'uploading:\n'; printf '  %s\n' "${pkgs[@]}"
-          pixi exec rattler-build upload prefix --channel cuda-optimized "$DUP" "${pkgs[@]}"
+          # Upload one package per call so each gets its own sigstore attestation
+          # (--generate-attestation pairs an attestation with a single artifact).
+          for f in "${pkgs[@]}"; do
+            echo "uploading (attested): $f"
+            pixi exec rattler-build upload prefix \
+              --channel cuda-optimized-packages \
+              --generate-attestation \
+              "$DUP" "$f"
+          done

@@ -104,18 +104,21 @@ rattler-build build --recipe flash-linear-attention
 matrix out into one job per `(package × cuda × arch × python)` cell — 66 jobs total
 (32 causal-conv1d + 32 flash-attn + noarch fla-core + noarch flash-linear-attention, with
 `sm100×12.6` excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
-**`cuda-optimized`** channel on prefix.dev with `--skip-existing`. Inputs let you limit to
-one package or force-overwrite.
+**`cuda-optimized-packages`** channel on prefix.dev, signed with a **sigstore attestation**
+(`--generate-attestation`, one upload per package). Auth uses **trusted publishing** (GitHub
+OIDC) — no API key/secret. Inputs let you limit to one package or force-overwrite.
 
-One-time setup before the first run:
+One-time setup before the first run (no secrets needed):
 
-```bash
-# 1. create the channel at https://prefix.dev/channels  (name: cuda-optimized)
-# 2. store an API key with write access as a repo secret:
-gh secret set PREFIX_API_KEY --repo wolfv/cuda-packages   # paste the token when prompted
+```text
+1. Create the channel `cuda-optimized-packages` at https://prefix.dev/channels
+2. Channel settings → Trusted Publishers → add:
+     repository: wolfv/cuda-packages
+     workflow:   build-and-upload-all.yml
 ```
 
-Then trigger it:
+The job grants `permissions: id-token: write` so rattler-build can mint a short-lived OIDC
+token (also used for keyless sigstore signing). Then trigger it:
 
 ```bash
 gh workflow run build-and-upload-all.yml --repo wolfv/cuda-packages           # all packages
@@ -125,7 +128,7 @@ gh workflow run build-and-upload-all.yml --repo wolfv/cuda-packages -f only_pack
 > The flash-attn cells are a heavy CUDA compile on CPU-only GitHub-hosted runners and may be
 > slow or hit the 6h job limit — consider larger/self-hosted runners for the full matrix.
 
-With `fla-core` now in the channel, all four packages resolve from `cuda-optimized` layered
+With `fla-core` now in the channel, all four packages resolve from `cuda-optimized-packages` layered
 on `conda-forge` (every other dependency — pytorch, cuda-\*, transformers, einops, triton —
 already lives on conda-forge).
 
@@ -163,5 +166,5 @@ curl -L https://raw.githubusercontent.com/conda-forge/conda-forge-pinning-feedst
   namespace, no file overlap — verified against both wheels).
 - **fla-core** — `noarch: python`; provides the `fla` namespace (`fla/__init__.py` + the
   Triton `fla.ops`). Deps are just `pytorch >=2.7.0` + `einops` (both on conda-forge).
-  Packaged here because it's not on conda-forge; publishing it to `cuda-optimized` is what
+  Packaged here because it's not on conda-forge; publishing it to `cuda-optimized-packages` is what
   makes flash-linear-attention installable.
