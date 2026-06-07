@@ -42,10 +42,6 @@ outputs:
         - ${{ compiler('cuda') }}
         - ${{ stdlib('c') }}
         - ninja
-        - if: build_platform != target_platform
-          then:
-            - pytorch
-            - pytorch * cuda*
       host:
         - cuda-version ==${{ cuda_compiler_version }}  # same cuda for host and build
         - cuda-cudart-dev
