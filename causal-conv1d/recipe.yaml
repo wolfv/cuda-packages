@@ -78,7 +78,6 @@ requirements:
   run:
     - if: cuda_compiler_version != "None"
       then:
-        - cuda-cudart
         # CEP-0046 hardware gate: only installable when the system's minimum
         # detected compute capability meets this variant's target generation.
         - __cuda_arch >=${{ min_cuda_arch }}
