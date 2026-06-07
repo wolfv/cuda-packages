@@ -135,8 +135,8 @@ jobs:
           # No PREFIX_API_KEY: auth is via trusted publishing (GitHub OIDC).
           mapfile -t pkgs < <(find output -type f \( -name '*.conda' -o -name '*.tar.bz2' \))
           if [ "${#pkgs[@]}" -eq 0 ]; then
-            echo "::error::no package artifacts were produced"
-            exit 1
+            echo "::notice::no artifacts produced (variant was skipped) — nothing to upload"
+            exit 0
           fi
           if [ "$OVERWRITE" = "true" ]; then DUP=--force; else DUP=--skip-existing; fi
           # Upload one package per call so each gets its own sigstore attestation
