@@ -72,8 +72,9 @@ rattler-build build --recipe flash-attn \
 # Build one specific cell (run on a linux machine with the CUDA stack).
 # `cuda_arch` is zipped with three sibling keys, so override the whole tuple
 # (overriding cuda_arch alone breaks the equal-length zip). Pin python for a
-# single build:
-rattler-build build --recipe causal-conv1d \
+# single build. CONDA_OVERRIDE_CUDA injects the __cuda virtual package so
+# `pytorch *cuda*` resolves on a host without an NVIDIA driver:
+CONDA_OVERRIDE_CUDA=12.9 rattler-build build --recipe causal-conv1d \
   -m pinning/conda_build_config.yaml -m causal-conv1d/variants.yaml \
   --target-platform linux-64 \
   --variant cuda_compiler_version=12.9 \
@@ -81,11 +82,20 @@ rattler-build build --recipe causal-conv1d \
   --variant torch_cuda_arch_list=9.0+PTX \
   --variant min_cuda_arch=9.0 \
   --variant arch_priority=1 \
-  --variant python=3.12
+  --variant python=3.12 \
+  --test skip
 
 # flash-linear-attention is noarch — no pinning/variants needed:
 rattler-build build --recipe flash-linear-attention
 ```
+
+> **Building without a GPU** (CI runners, laptops): the build host usually has no
+> NVIDIA driver, so the `__cuda` virtual package is absent and `pytorch *cuda*` fails
+> to solve. Export `CONDA_OVERRIDE_CUDA=<cuda version>` (matching `cuda_compiler_version`)
+> to inject it. If you also run the tests, export `CONDA_OVERRIDE_CUDA_ARCH=<min cc>`
+> (e.g. `9.0` for `sm90`) so the CEP-46 `__cuda_arch` run-gate is satisfied — though the
+> compiled kernels still can't actually execute without a real GPU. The Action sets both
+> for you.
 
 ## Build a single variant from GitHub Actions
 
@@ -112,6 +122,7 @@ curl -L https://raw.githubusercontent.com/conda-forge/conda-forge-pinning-feedst
   extension packages pin `flash-attn` exactly, so they inherit its `__cuda_arch` gate.
   `pyproject.toml` / `setup.py` / `LICENSE_CUTLASS.txt` are vendored from the feedstock.
 - **flash-linear-attention** — `noarch: python`. Triton kernels JIT at runtime, so there
-  is nothing to compile per arch/CUDA version. As of 0.5.0 it is a thin meta package over
-  **`fla-core`**, which is **not yet on conda-forge** — that recipe must be added before
-  this one can build/test (the `import fla` test needs it).
+  is nothing to compile per arch/CUDA version. As of 0.5.0 it ships the high-level
+  `fla.layers` / `fla.models` while the core ops live in **`fla-core`** (same `fla`
+  namespace, no file overlap — verified against both wheels). `fla-core` is **not yet on
+  conda-forge**, so it must be packaged before this recipe can build/test.

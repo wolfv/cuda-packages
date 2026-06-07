@@ -30,14 +30,17 @@ requirements:
     - wheel
   run:
     - python >=${{ python_min }}
-    # As of 0.5.0 the implementation lives in `fla-core`; this is a thin meta package.
+    # 0.5.0 ships the high-level fla.layers / fla.models; the core ops live in
+    # `fla-core` under the same `fla` namespace (no file overlap between them).
     - fla-core ==${{ version }}
     - transformers
 
 tests:
   - python:
       imports:
-        - fla
+        - fla           # core namespace, provided by fla-core
+        - fla.layers    # shipped by this package
+        - fla.models    # shipped by this package (HF model defs; needs transformers)
       pip_check: true
       python_version: ${{ python_min }}.*
 
