@@ -117,6 +117,10 @@ curl -L https://raw.githubusercontent.com/conda-forge/conda-forge-pinning-feedst
 
 - **causal-conv1d** — ported from the existing v1 feedstock recipe; added the arch axis
   (`TORCH_CUDA_ARCH_LIST`, build-string tag, `__cuda_arch` gate, prioritization, skip).
+  Its upstream `setup.py` hard-codes `-gencode` flags for every sm, which makes torch
+  ignore `TORCH_CUDA_ARCH_LIST` and build a fat all-arch binary; `patches/0002-…` removes
+  them so each variant compiles only its target arch. (flash-attn needs no such patch — it
+  already defers arch selection to torch.)
 - **flash-attn** — translated from the v0 `meta.yaml`. Builds once via a `staging` output
   and splits into `flash-attn`, `flash-attn-fused-dense`, `flash-attn-layer-norm`; the two
   extension packages pin `flash-attn` exactly, so they inherit its `__cuda_arch` gate.
