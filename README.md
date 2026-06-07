@@ -8,6 +8,7 @@ virtual package (CEP-46).
 ```
 causal-conv1d/            recipe.yaml + variants.yaml        (CUDA, arch matrix)
 flash-attn/               recipe.yaml + variants.yaml + ...  (CUDA, arch matrix, 3 outputs)
+fla-core/                 recipe.yaml                        (noarch: python; the `fla` core)
 flash-linear-attention/   recipe.yaml                        (noarch: python, Triton JIT)
 pinning/                  conda_build_config.yaml            (vendored conda-forge global pinning)
 ```
@@ -100,9 +101,9 @@ rattler-build build --recipe flash-linear-attention
 ## Build everything and publish to prefix.dev
 
 `.github/workflows/build-and-upload-all.yml` (manual `workflow_dispatch`) fans the full
-matrix out into one job per `(package × cuda × arch × python)` cell — 65 jobs total
-(32 causal-conv1d + 32 flash-attn + 1 noarch flash-linear-attention, with `sm100×12.6`
-excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
+matrix out into one job per `(package × cuda × arch × python)` cell — 66 jobs total
+(32 causal-conv1d + 32 flash-attn + noarch fla-core + noarch flash-linear-attention, with
+`sm100×12.6` excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
 **`cuda-optimized`** channel on prefix.dev with `--skip-existing`. Inputs let you limit to
 one package or force-overwrite.
 
@@ -123,7 +124,10 @@ gh workflow run build-and-upload-all.yml --repo wolfv/cuda-packages -f only_pack
 
 > The flash-attn cells are a heavy CUDA compile on CPU-only GitHub-hosted runners and may be
 > slow or hit the 6h job limit — consider larger/self-hosted runners for the full matrix.
-> flash-linear-attention uploads fine but won't resolve until `fla-core` is also on the channel.
+
+With `fla-core` now in the channel, all four packages resolve from `cuda-optimized` layered
+on `conda-forge` (every other dependency — pytorch, cuda-\*, transformers, einops, triton —
+already lives on conda-forge).
 
 ## Build a single variant from GitHub Actions
 
@@ -156,5 +160,8 @@ curl -L https://raw.githubusercontent.com/conda-forge/conda-forge-pinning-feedst
 - **flash-linear-attention** — `noarch: python`. Triton kernels JIT at runtime, so there
   is nothing to compile per arch/CUDA version. As of 0.5.0 it ships the high-level
   `fla.layers` / `fla.models` while the core ops live in **`fla-core`** (same `fla`
-  namespace, no file overlap — verified against both wheels). `fla-core` is **not yet on
-  conda-forge**, so it must be packaged before this recipe can build/test.
+  namespace, no file overlap — verified against both wheels).
+- **fla-core** — `noarch: python`; provides the `fla` namespace (`fla/__init__.py` + the
+  Triton `fla.ops`). Deps are just `pytorch >=2.7.0` + `einops` (both on conda-forge).
+  Packaged here because it's not on conda-forge; publishing it to `cuda-optimized` is what
+  makes flash-linear-attention installable.

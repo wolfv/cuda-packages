@@ -1,0 +1,51 @@
+schema_version: 1
+
+context:
+  name: fla-core
+  version: "0.5.0"
+  # Upstream requires-python is >=3.10 (matches conda-forge's current default).
+  python_min: "3.10"
+
+package:
+  name: ${{ name }}
+  version: ${{ version }}
+
+source:
+  url: https://pypi.org/packages/source/f/${{ name }}/fla_core-${{ version }}.tar.gz
+  sha256: 476dd94711702af81cc4827010d9209f6053d8cdceac8e43d3c8497071f07a81
+
+build:
+  number: 0
+  # Pure-Python core for flash-linear-attention: provides the `fla` namespace
+  # (fla/__init__.py + the Triton ops). Triton JITs at runtime, nothing to compile.
+  noarch: python
+  script: python -m pip install . -vv --no-deps --no-build-isolation
+
+requirements:
+  host:
+    - python ${{ python_min }}.*
+    - pip
+    - setuptools
+    - wheel
+  run:
+    - python >=${{ python_min }}
+    - pytorch >=2.7.0
+    - einops
+
+tests:
+  - python:
+      imports:
+        - fla
+        - fla.ops
+      pip_check: true
+      python_version: ${{ python_min }}.*
+
+about:
+  homepage: https://github.com/fla-org/flash-linear-attention
+  summary: Core Triton ops and modules for flash-linear-attention
+  license: MIT
+  license_file: LICENSE
+
+extra:
+  recipe-maintainers:
+    - hi-prefix-dev

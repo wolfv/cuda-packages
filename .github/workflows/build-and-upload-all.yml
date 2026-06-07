@@ -17,6 +17,7 @@ on:
           - all
           - causal-conv1d
           - flash-attn
+          - fla-core
           - flash-linear-attention
         default: all
       overwrite:
@@ -65,9 +66,12 @@ jobs:
                           rows.append(dict(package=pkg, noarch="false", cuda=cuda,
                                            arch=arch, torch=torch, mincc=mincc,
                                            prio=prio, py=py))
-          if only in ("all", "flash-linear-attention"):
-              rows.append(dict(package="flash-linear-attention", noarch="true",
-                               cuda="", arch="", torch="", mincc="", prio="", py=""))
+          # noarch pure-python packages (fla-core must be on the channel for
+          # flash-linear-attention to resolve)
+          for pkg in ("fla-core", "flash-linear-attention"):
+              if only in ("all", pkg):
+                  rows.append(dict(package=pkg, noarch="true", cuda="", arch="",
+                                   torch="", mincc="", prio="", py=""))
           print("include=" + json.dumps(rows))
           PY
 

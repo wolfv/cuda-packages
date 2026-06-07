@@ -11,6 +11,7 @@ on:
         options:
           - causal-conv1d
           - flash-attn
+          - fla-core
           - flash-linear-attention
         default: causal-conv1d
       cuda_compiler_version:
@@ -70,7 +71,7 @@ jobs:
             ARGS+=(--test skip)
           fi
 
-          if [ "$PKG" = "flash-linear-attention" ]; then
+          if [ "$PKG" = "flash-linear-attention" ] || [ "$PKG" = "fla-core" ]; then
             echo "noarch package — cuda/arch/python inputs are ignored."
           else
             if [ "$ARCH" = "sm100" ] && [ "$CUDA" = "12.6" ]; then
