@@ -67,8 +67,6 @@ outputs:
       skip:
         - cuda_compiler_version == "None"
         - not linux
-        - cuda_arch == "sm100" and cuda_compiler_version == "12.6"
-        - cuda_arch == "sm120" and cuda_compiler_version == "12.6"
       variant:
         use_keys:
           - cuda_compiler_version
@@ -101,8 +99,6 @@ outputs:
       skip:
         - cuda_compiler_version == "None"
         - not linux
-        - cuda_arch == "sm100" and cuda_compiler_version == "12.6"
-        - cuda_arch == "sm120" and cuda_compiler_version == "12.6"
       variant:
         use_keys:
           - cuda_compiler_version
@@ -132,8 +128,6 @@ outputs:
       skip:
         - cuda_compiler_version == "None"
         - not linux
-        - cuda_arch == "sm100" and cuda_compiler_version == "12.6"
-        - cuda_arch == "sm120" and cuda_compiler_version == "12.6"
       variant:
         use_keys:
           - cuda_compiler_version

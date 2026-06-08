@@ -32,7 +32,7 @@ Both compiled packages multiply two axes (see each `variants.yaml`):
 
 | Axis | Values | Mechanism |
 |------|--------|-----------|
-| **CUDA version** | 12.6, 12.9, 13.0 | `cuda_compiler_version`, zipped with the host toolchain (gcc + glibc) it needs — `cuda-version ==X` in host pins the runtime so only the matching build resolves |
+| **CUDA version** | 12.9, 13.0 | `cuda_compiler_version`, zipped with the host toolchain (gcc + glibc) it needs — `cuda-version ==X` in host pins the runtime so only the matching build resolves |
 | **GPU generation** | sm80 / sm90 / sm100 / sm120 | `cuda_arch` (+ zipped `torch_cuda_arch_list`, `min_cuda_arch`, `arch_priority`) |
 
 Per generation (the `cuda_arch` label is the group's minimum sm, matching the run-gate):
@@ -57,13 +57,15 @@ more than one variant qualifies (e.g. an sm_100 box can run all three via SASS+P
 sm_120/121 → `sm120`, automatically. Each group carries `+PTX` on its top capability for
 forward compatibility, per the CEP's usage notes.
 
-`sm100` and `sm120` × CUDA 12.6 are skipped because both Blackwell families require CUDA ≥ 12.8.
+Only CUDA **12.9** and **13.0** are built: pytorch 2.10 ships only `cu129`/`cu130` on
+conda-forge (no `cu126`), so 12.6 isn't achievable for these recipes. All four arch variants
+build on both CUDA versions.
 
 Each CUDA toolkit needs a matching host toolchain, so `cuda_compiler_version` is zipped with
 `c/cxx/fortran_compiler_version` + `c_stdlib_version` (mirroring conda-forge's `cuda130`
-migration): **12.6 → gcc 13** (nvcc 12.6 maxes at gcc 13), **12.9 → gcc 14**, **13.0 → gcc 14 +
-glibc 2.28** (CUDA 13 needs a newer glibc). Overriding `cuda_compiler_version` alone would
-break that pairing and fail the build-env solve, so the workflows pass the whole tuple together.
+migration): **12.9 → gcc 14 + glibc 2.17**, **13.0 → gcc 14 + glibc 2.28** (CUDA 13 needs a
+newer glibc). Overriding `cuda_compiler_version` alone would break that pairing and fail the
+build-env solve, so the workflows pass the whole toolchain tuple together.
 
 ## Building
 
@@ -113,9 +115,9 @@ rattler-build build --recipe flash-linear-attention
 ## Build everything and publish to prefix.dev
 
 `.github/workflows/build-and-upload-all.yml` (manual `workflow_dispatch`) fans the full
-matrix out into one job per `(package × cuda × arch × python)` cell — 82 jobs total
-(40 causal-conv1d + 40 flash-attn + noarch fla-core + noarch flash-linear-attention, with
-`sm100`/`sm120 × 12.6` excluded) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
+matrix out into one job per `(package × cuda × arch × python)` cell — 66 jobs total
+(32 causal-conv1d + 32 flash-attn + noarch fla-core + noarch flash-linear-attention; 2 CUDA ×
+4 arch × 4 python per compiled package) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
 **`cuda-optimized-packages`** channel on prefix.dev, signed with a **sigstore attestation**
 (`--generate-attestation`, one upload per package). Auth uses **trusted publishing** (GitHub
 OIDC) — no API key/secret. Inputs let you limit to one package or force-overwrite.
