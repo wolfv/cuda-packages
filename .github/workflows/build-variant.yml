@@ -89,6 +89,14 @@ jobs:
               sm120) TORCH="12.0+PTX";        MINCC="12.0"; PRIO="0" ;;
               *) echo "::error::unknown cuda_arch '$ARCH'"; exit 1 ;;
             esac
+            # Host gcc + glibc must match the CUDA toolkit (12.6->gcc13; 13.0->glibc
+            # 2.28). Mirrors conda-forge's cuda130 migration; zipped with cuda below.
+            case "$CUDA" in
+              12.6) GCC="13"; GLIBC="2.17" ;;
+              12.9) GCC="14"; GLIBC="2.17" ;;
+              13.0) GCC="14"; GLIBC="2.28" ;;
+              *) echo "::error::unknown cuda_compiler_version '$CUDA'"; exit 1 ;;
+            esac
             # GitHub-hosted runners have no NVIDIA driver, so the __cuda virtual
             # package is absent and `pytorch *cuda*` won't resolve. Inject it for
             # the solve. For tests, also inject __cuda_arch to satisfy the CEP-46
@@ -100,6 +108,10 @@ jobs:
             ARGS+=(-m pinning/conda_build_config.yaml -m "$PKG/variants.yaml")
             ARGS+=(--target-platform linux-64)
             ARGS+=(--variant "cuda_compiler_version=$CUDA")
+            ARGS+=(--variant "c_compiler_version=$GCC")
+            ARGS+=(--variant "cxx_compiler_version=$GCC")
+            ARGS+=(--variant "fortran_compiler_version=$GCC")
+            ARGS+=(--variant "c_stdlib_version=$GLIBC")
             ARGS+=(--variant "cuda_arch=$ARCH")
             ARGS+=(--variant "torch_cuda_arch_list=$TORCH")
             ARGS+=(--variant "min_cuda_arch=$MINCC")

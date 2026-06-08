@@ -54,27 +54,32 @@ jobs:
               ("sm100", "10.0+PTX",        "10.0", "1"),   # Blackwell 10.x family
               ("sm120", "12.0+PTX",        "12.0", "0"),   # Blackwell 12.x family
           ]
-          CUDAS = ["12.6", "12.9", "13.0"]
+          # cuda -> (host gcc, glibc); mirrors conda-forge's cuda130 migration
+          CUDA_PIN = {
+              "12.6": ("13", "2.17"),
+              "12.9": ("14", "2.17"),
+              "13.0": ("14", "2.28"),
+          }
           PYS = ["3.10", "3.11", "3.12", "3.13"]
           rows = []
           for pkg in ("causal-conv1d", "flash-attn"):
               if only not in ("all", pkg):
                   continue
-              for cuda in CUDAS:
+              for cuda, (gcc, glibc) in CUDA_PIN.items():
                   for arch, torch, mincc, prio in ARCHES:
                       # Blackwell (sm_100/sm_120) needs CUDA >= 12.8
                       if arch in ("sm100", "sm120") and cuda == "12.6":
                           continue
                       for py in PYS:
                           rows.append(dict(package=pkg, noarch="false", cuda=cuda,
-                                           arch=arch, torch=torch, mincc=mincc,
-                                           prio=prio, py=py))
+                                           gcc=gcc, glibc=glibc, arch=arch, torch=torch,
+                                           mincc=mincc, prio=prio, py=py))
           # noarch pure-python packages (fla-core must be on the channel for
           # flash-linear-attention to resolve)
           for pkg in ("fla-core", "flash-linear-attention"):
               if only in ("all", pkg):
-                  rows.append(dict(package=pkg, noarch="true", cuda="", arch="",
-                                   torch="", mincc="", prio="", py=""))
+                  rows.append(dict(package=pkg, noarch="true", cuda="", gcc="", glibc="",
+                                   arch="", torch="", mincc="", prio="", py=""))
           print("include=" + json.dumps(rows))
           PY
 
@@ -103,6 +108,8 @@ jobs:
           PKG: ${{ matrix.package }}
           NOARCH: ${{ matrix.noarch }}
           CUDA: ${{ matrix.cuda }}
+          GCC: ${{ matrix.gcc }}
+          GLIBC: ${{ matrix.glibc }}
           ARCH: ${{ matrix.arch }}
           TORCH: ${{ matrix.torch }}
           MINCC: ${{ matrix.mincc }}
@@ -116,10 +123,16 @@ jobs:
           else
             # No GPU driver on the runner -> inject __cuda so pytorch *cuda* resolves.
             export CONDA_OVERRIDE_CUDA="$CUDA"
+            # Override the whole cuda<->toolchain zip together (overriding
+            # cuda_compiler_version alone would break the equal-length zip).
             pixi exec rattler-build build --recipe "$PKG" \
               -m pinning/conda_build_config.yaml -m "$PKG/variants.yaml" \
               --target-platform linux-64 --test skip --output-dir output \
               --variant "cuda_compiler_version=$CUDA" \
+              --variant "c_compiler_version=$GCC" \
+              --variant "cxx_compiler_version=$GCC" \
+              --variant "fortran_compiler_version=$GCC" \
+              --variant "c_stdlib_version=$GLIBC" \
               --variant "cuda_arch=$ARCH" \
               --variant "torch_cuda_arch_list=$TORCH" \
               --variant "min_cuda_arch=$MINCC" \

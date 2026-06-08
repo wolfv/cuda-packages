@@ -32,7 +32,7 @@ Both compiled packages multiply two axes (see each `variants.yaml`):
 
 | Axis | Values | Mechanism |
 |------|--------|-----------|
-| **CUDA version** | 12.6, 12.9, 13.0 | `cuda_compiler_version`; `cuda-version ==X` in host pins the runtime so only the matching build resolves |
+| **CUDA version** | 12.6, 12.9, 13.0 | `cuda_compiler_version`, zipped with the host toolchain (gcc + glibc) it needs — `cuda-version ==X` in host pins the runtime so only the matching build resolves |
 | **GPU generation** | sm80 / sm90 / sm100 / sm120 | `cuda_arch` (+ zipped `torch_cuda_arch_list`, `min_cuda_arch`, `arch_priority`) |
 
 Per generation (the `cuda_arch` label is the group's minimum sm, matching the run-gate):
@@ -58,6 +58,12 @@ sm_120/121 → `sm120`, automatically. Each group carries `+PTX` on its top capa
 forward compatibility, per the CEP's usage notes.
 
 `sm100` and `sm120` × CUDA 12.6 are skipped because both Blackwell families require CUDA ≥ 12.8.
+
+Each CUDA toolkit needs a matching host toolchain, so `cuda_compiler_version` is zipped with
+`c/cxx/fortran_compiler_version` + `c_stdlib_version` (mirroring conda-forge's `cuda130`
+migration): **12.6 → gcc 13** (nvcc 12.6 maxes at gcc 13), **12.9 → gcc 14**, **13.0 → gcc 14 +
+glibc 2.28** (CUDA 13 needs a newer glibc). Overriding `cuda_compiler_version` alone would
+break that pairing and fail the build-env solve, so the workflows pass the whole tuple together.
 
 ## Building
 
