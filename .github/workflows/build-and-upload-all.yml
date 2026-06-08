@@ -100,7 +100,7 @@ jobs:
         with:
           run-install: false
 
-      - name: Build variant
+      - name: Build & publish variant
         env:
           PKG: ${{ matrix.package }}
           NOARCH: ${{ matrix.noarch }}
@@ -112,19 +112,29 @@ jobs:
           MINCC: ${{ matrix.mincc }}
           PRIO: ${{ matrix.prio }}
           PY: ${{ matrix.py }}
+          OVERWRITE: ${{ inputs.overwrite }}
         shell: bash
         run: |
           set -euo pipefail
+          # `publish` builds + uploads + indexes in one step. With the target
+          # channel in -c, `--skip-existing all` skips the *build itself* (not just
+          # the upload) for variants already in the channel — no wasted compile.
+          # Auth is trusted publishing (OIDC); attestations are generated per output.
+          if [ "$OVERWRITE" = "true" ]; then DUP=(--force); else DUP=(--skip-existing all); fi
+          COMMON=(publish -r "$PKG"
+            --to https://prefix.dev/cuda-optimized-packages
+            -c https://prefix.dev/cuda-optimized-packages -c conda-forge
+            --test skip --generate-attestation "${DUP[@]}")
           if [ "$NOARCH" = "true" ]; then
-            pixi exec rattler-build build --recipe "$PKG" --output-dir output --test skip
+            pixi exec rattler-build "${COMMON[@]}"
           else
             # No GPU driver on the runner -> inject __cuda so pytorch *cuda* resolves.
             export CONDA_OVERRIDE_CUDA="$CUDA"
             # Override the whole cuda<->toolchain zip together (overriding
             # cuda_compiler_version alone would break the equal-length zip).
-            pixi exec rattler-build build --recipe "$PKG" \
+            pixi exec rattler-build "${COMMON[@]}" \
               -m pinning/conda_build_config.yaml -m "$PKG/variants.yaml" \
-              --target-platform linux-64 --test skip --output-dir output \
+              --target-platform linux-64 \
               --variant "cuda_compiler_version=$CUDA" \
               --variant "c_compiler_version=$GCC" \
               --variant "cxx_compiler_version=$GCC" \
@@ -136,26 +146,3 @@ jobs:
               --variant "arch_priority=$PRIO" \
               --variant "python=$PY"
           fi
-
-      - name: Upload to prefix.dev (cuda-optimized-packages)
-        env:
-          OVERWRITE: ${{ inputs.overwrite }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          # No PREFIX_API_KEY: auth is via trusted publishing (GitHub OIDC).
-          mapfile -t pkgs < <(find output -type f \( -name '*.conda' -o -name '*.tar.bz2' \))
-          if [ "${#pkgs[@]}" -eq 0 ]; then
-            echo "::notice::no artifacts produced (variant was skipped) — nothing to upload"
-            exit 0
-          fi
-          if [ "$OVERWRITE" = "true" ]; then DUP=--force; else DUP=--skip-existing; fi
-          # Upload one package per call so each gets its own sigstore attestation
-          # (--generate-attestation pairs an attestation with a single artifact).
-          for f in "${pkgs[@]}"; do
-            echo "uploading (attested): $f"
-            pixi exec rattler-build upload prefix \
-              --channel cuda-optimized-packages \
-              --generate-attestation \
-              "$DUP" "$f"
-          done

@@ -117,10 +117,16 @@ rattler-build build --recipe flash-linear-attention
 `.github/workflows/build-and-upload-all.yml` (manual `workflow_dispatch`) fans the full
 matrix out into one job per `(package × cuda × arch × python)` cell — 66 jobs total
 (32 causal-conv1d + 32 flash-attn + noarch fla-core + noarch flash-linear-attention; 2 CUDA ×
-4 arch × 4 python per compiled package) — builds each (`--test skip`, CPU runner) and uploads its `.conda` to the
-**`cuda-optimized-packages`** channel on prefix.dev, signed with a **sigstore attestation**
-(`--generate-attestation`, one upload per package). Auth uses **trusted publishing** (GitHub
+4 arch × 4 python per compiled package). Each job runs a single **`rattler-build publish`**
+(build + upload + index) to the **`cuda-optimized-packages`** channel, signed with a
+**sigstore attestation** (`--generate-attestation`). Auth uses **trusted publishing** (GitHub
 OIDC) — no API key/secret. Inputs let you limit to one package or force-overwrite.
+
+Because the target channel is passed in `-c`, **`--skip-existing all` skips the *build itself*
+(not just the upload)** for any variant already in the channel — so re-runs don't waste
+compute recompiling CUDA kernels that are already published. (`overwrite: true` passes
+`--force` instead.) Note: `--skip-existing` reads the channel's repodata, so the channel
+should be public (or the runner otherwise able to read it).
 
 One-time setup before the first run (no secrets needed):
 
